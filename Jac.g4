@@ -12,6 +12,8 @@ symbols_used = []
 stack_cur      = 0
 stack_max      = 0
 
+if_counter = 0
+
 def emit(bytecode, delta):
     global stack_cur,stack_max
     print('    ' + str(bytecode) + '    ; delta = ' + str(delta) )
@@ -22,6 +24,7 @@ def emit(bytecode, delta):
 
 /*---------------- LEXER RULES ----------------*/
 
+IF : 'if';
 PRINT : 'print' ;
 READINT : 'readint' ;
 
@@ -31,10 +34,14 @@ TIMES : '*' ;
 OVER  : '/' ;
 REM   : '%' ;
 
+OP_CUR: '{' ;
+CL_CUR: '}' ;
 OP_PAR: '(' ;
 CL_PAR: ')' ;
 ATTRIB: '=' ;
 COMMA : ',' ;
+
+LT    : '<' ;
 
 NAME  : 'a'..'z'+ ;
 
@@ -82,36 +89,30 @@ main:
     }
     ;
 
-statement: st_print | st_attrib
+statement: st_print | st_attrib | st_if
     ;
 
 st_print:
     PRINT OP_PAR
     {if 1:
-        #print('    getstatic java/lang/System/out Ljava/io/PrintStream;')
         emit('getstatic java/lang/System/out Ljava/io/PrintStream;', +1)
     }
     expression 
     {if 1:
-        #print('    invokevirtual java/io/PrintStream/print(I)V\n')
         emit('invokevirtual java/io/PrintStream/print(I)V\n', -2)
     }
     ( COMMA
     {if 1:
-        #print('    getstatic java/lang/System/out Ljava/io/PrintStream;')
         emit('getstatic java/lang/System/out Ljava/io/PrintStream;', +1)
     }
     expression
     {if 1:
-        #print('    invokevirtual java/io/PrintStream/print(I)V\n')
         emit('invokevirtual java/io/PrintStream/print(I)V\n', -2)
     }
     )*
-    )?CL_PAR
+    ?CL_PAR
     {if 1:
-        #print('    getstatic java/lang/System/out Ljava/io/PrintStream;')
         emit('getstatic java/lang/System/out Ljava/io/PrintStream;', +1)
-        #print('    invokevirtual java/io/PrintStream/println()V\n')
         emit('invokevirtual java/io/PrintStream/println()V\n', -1)
     }
     ;
@@ -122,8 +123,22 @@ st_attrib:
         if $NAME.text not in symbol_table:
             symbol_table.append($NAME.text)
 
-        #print('    istore ' + str(symbol_table.index($NAME.text)))
         emit('istore '+str(symbol_table.index($NAME.text)),-1)
+    }
+    ;
+
+st_if:
+    IF comparison OP_CUR ( statement )+ CL_CUR
+    {if 1:
+        global if_counter
+        print(f'NOT_IF_{if_counter}:')
+        if_counter += 1
+    }
+    ;
+
+comparison: expression LT expression
+    {if 1:
+        emit('if_icmpge NOT_IF_' + str(if_counter), -2)
     }
     ;
 
@@ -131,10 +146,8 @@ expression:
     term ( op = (PLUS | MINUS) term
     {if 1:
         if $op.type == JacParser.PLUS:
-            #print('    iadd')
             emit('iadd', -1)
         else:
-            #print('    isub')
             emit('isub', -1)
     }
     )*
@@ -143,13 +156,10 @@ expression:
 term: factor ( op = (TIMES | OVER | REM ) factor
     {if 1:
         if $op.type == JacParser.TIMES:
-            #print('    imul')
             emit('imul', -1)
         elif $op.type == JacParser.OVER:
-            #print('    idiv')
             emit('idiv', -1)
         else:
-            #print('    irem')
             emit('irem', -1)
     }
     )*
@@ -169,12 +179,10 @@ factor: NUMBER
         else:
             if $NAME.text not in symbol_table:
                 symbols_used.append($NAME.text)
-            #print('    iload  ' + str(symbol_table.index($NAME.text)))
             emit('iload ' + str(symbol_table.index($NAME.text)), +1)
     }
     | READINT OP_PAR CL_PAR
     {if 1:
-        #print('    invokestatic Runtime/readInt()I')
         emit('invokestatic Runtime/readInt()I', +1)
     }
     ;
