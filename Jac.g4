@@ -13,6 +13,7 @@ stack_cur      = 0
 stack_max      = 0
 
 if_counter = 0
+while_counter = 0
 
 def emit(bytecode, delta):
     global stack_cur,stack_max
@@ -24,7 +25,8 @@ def emit(bytecode, delta):
 
 /*---------------- LEXER RULES ----------------*/
 
-IF : 'if';
+IF : 'if' ;
+WHILE : 'while' ;
 PRINT : 'print' ;
 READINT : 'readint' ;
 
@@ -41,7 +43,12 @@ CL_PAR: ')' ;
 ATTRIB: '=' ;
 COMMA : ',' ;
 
+LE    : '<=';
 LT    : '<' ;
+EQ    : '==';
+NE    : '!=';
+GT    : '>' ;
+GE    : '>=';
 
 NAME  : 'a'..'z'+ ;
 
@@ -89,7 +96,7 @@ main:
     }
     ;
 
-statement: st_print | st_attrib | st_if
+statement: st_print | st_attrib | st_if | st_while
     ;
 
 st_print:
@@ -127,18 +134,68 @@ st_attrib:
     }
     ;
 
-st_if:
-    IF comparison OP_CUR ( statement )+ CL_CUR
+st_while:
+    WHILE 
     {if 1:
-        global if_counter
-        print(f'NOT_IF_{if_counter}:')
-        if_counter += 1
+        global while_counter
+        local_counter = while_counter
+        print(f'BEGIN_WHILE_{local_counter}:')
+    }
+    comparison_while
+    {if 1:
+        while_counter += 1
+    }
+    OP_CUR ( statement )+ CL_CUR
+    {if 1:
+        emit('goto BEGIN_WHILE_' + str(local_counter), 0)
+        print(f'END_WHILE_{local_counter}:')
     }
     ;
 
-comparison: expression LT expression
+comparison_while: expression op = ( LT | LE | EQ | NE | GT | GE ) expression
     {if 1:
-        emit('if_icmpge NOT_IF_' + str(if_counter), -2)
+        if $op.type == JacParser.EQ:
+            emit('if_icmpne END_WHILE_' + str(while_counter), -2)
+        elif $op.type == JacParser.NE:
+            emit('if_icmpeq END_WHILE_' + str(while_counter), -2)
+        elif $op.type == JacParser.GT:
+            emit('if_icmple END_WHILE_' + str(while_counter), -2)
+        elif $op.type == JacParser.GE:
+            emit('if_icmplt END_WHILE_' + str(while_counter), -2)
+        elif $op.type == JacParser.LT:
+            emit('if_icmpge END_WHILE_' + str(while_counter), -2)
+        elif $op.type == JacParser.LE:
+            emit('if_icmpgt END_WHILE_' + str(while_counter), -2)
+    }
+    ;
+
+st_if:
+    IF comparison_if
+    {if 1:
+        global if_counter
+        local_counter = if_counter
+        if_counter += 1
+    }
+    OP_CUR ( statement )+ CL_CUR
+    {if 1:
+        print(f'NOT_IF_{local_counter}:')
+    }
+    ;
+
+comparison_if: expression op = ( LT | LE | EQ | NE | GT | GE ) expression
+    {if 1:
+        if $op.type == JacParser.EQ:
+            emit('if_icmpne NOT_IF_' + str(if_counter), -2)
+        elif $op.type == JacParser.NE:
+            emit('if_icmpeq NOT_IF_' + str(if_counter), -2)
+        elif $op.type == JacParser.GT:
+            emit('if_icmple NOT_IF_' + str(if_counter), -2)
+        elif $op.type == JacParser.GE:
+            emit('if_icmplt NOT_IF_' + str(if_counter), -2)
+        elif $op.type == JacParser.LT:
+            emit('if_icmpge NOT_IF_' + str(if_counter), -2)
+        elif $op.type == JacParser.LE:
+            emit('if_icmpgt NOT_IF_' + str(if_counter), -2)
     }
     ;
 
