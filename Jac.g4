@@ -90,7 +90,7 @@ main:
         print('    return')
         if len(symbol_table) > 0:
             print('.limit locals ' + str(len(symbol_table)))
-        print('.limit stack 10')
+        print('.limit stack ' + str(stack_max))
         print('.end method')
         print('\n; symbol_table:', symbol_table)
     }
