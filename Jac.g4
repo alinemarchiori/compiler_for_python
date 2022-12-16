@@ -23,12 +23,40 @@ def emit(bytecode, delta):
         stack_max = stack_cur
 }
 
+/*---------------- LEXER INTERNALS ----------------*/
+
+@lexer::header
+{
+from antlr_denter.DenterHelper import DenterHelper
+from JacParser import JacParser
+}
+
+@lexer::members
+{
+class JacDenter(DenterHelper):
+    def __init__(self, lexer, nl_token, indent_token, dedent_token, ignore_eof):
+        super().__init__(nl_token, indent_token, dedent_token, ignore_eof)
+        self.lexer: JacLexer = lexer
+
+    def pull_token(self):
+        return super(JacLexer, self.lexer).nextToken()
+
+denter = None
+
+def nextToken(self):
+    if not self.denter:
+        self.denter = self.JacDenter(self, self.NL, JacParser.INDENT, JacParser.DEDENT, False)
+    return self.denter.next_token()
+}
+
 /*---------------- LEXER RULES ----------------*/
 
 IF : 'if' ;
 WHILE : 'while' ;
 PRINT : 'print' ;
 READINT : 'readint' ;
+INDENT  : 'indent' ;
+DEDENT  : 'dedent' ;
 
 PLUS  : '+' ;
 MINUS : '-' ;
@@ -42,6 +70,7 @@ OP_PAR: '(' ;
 CL_PAR: ')' ;
 ATTRIB: '=' ;
 COMMA : ',' ;
+COLON : ':' ;
 
 LE    : '<=';
 LT    : '<' ;
@@ -54,9 +83,9 @@ NAME  : 'a'..'z'+ ;
 
 NUMBER: '0'..'9'+ ;
 
-SPACE : (' '|'\t'|'\r'|'\n')+ -> skip ;
-
-COMMENT: '#' ~('\n')*         -> skip ;
+COMMENT: '#' ~('\n')* -> skip ;
+NL     : ('\r'? '\n' ' '*) ;
+SPACE  : (' '|'\t')+ -> skip ;
 
 /*---------------- PARSER RULES ----------------*/
 
@@ -96,7 +125,7 @@ main:
     }
     ;
 
-statement: st_print | st_attrib | st_if | st_while
+statement: NL | st_print | st_attrib | st_if | st_while
     ;
 
 st_print:
@@ -145,7 +174,7 @@ st_while:
     {if 1:
         while_counter += 1
     }
-    OP_CUR ( statement )+ CL_CUR
+    COLON INDENT ( statement )+ DEDENT
     {if 1:
         emit('goto BEGIN_WHILE_' + str(local_counter), 0)
         print(f'END_WHILE_{local_counter}:')
@@ -176,7 +205,7 @@ st_if:
         local_counter = if_counter
         if_counter += 1
     }
-    OP_CUR ( statement )+ CL_CUR
+    COLON INDENT ( statement )+ DEDENT
     {if 1:
         print(f'NOT_IF_{local_counter}:')
     }
