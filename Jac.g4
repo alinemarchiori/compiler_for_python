@@ -11,6 +11,7 @@ symbols_used = []
 
 stack_cur      = 0
 stack_max      = 0
+stack_while    = []
 
 if_counter = 0
 while_counter = 0
@@ -51,12 +52,14 @@ def nextToken(self):
 
 /*---------------- LEXER RULES ----------------*/
 
-IF : 'if' ;
-WHILE : 'while' ;
-PRINT : 'print' ;
+IF      : 'if'      ;
+WHILE   : 'while'   ;
+PRINT   : 'print'   ;
 READINT : 'readint' ;
-INDENT  : 'indent' ;
-DEDENT  : 'dedent' ;
+INDENT  : 'indent'  ;
+DEDENT  : 'dedent'  ;
+BREAK   : 'break'   ; 
+CONTINUE: 'continue'; 
 
 PLUS  : '+' ;
 MINUS : '-' ;
@@ -125,7 +128,7 @@ main:
     }
     ;
 
-statement: NL | st_print | st_attrib | st_if | st_while
+statement: NL | st_print | st_attrib | st_if | st_while | st_break | st_continue
     ;
 
 st_print:
@@ -166,42 +169,28 @@ st_attrib:
 st_while:
     WHILE 
     {if 1:
-        global while_counter
-        local_counter = while_counter
-        print(f'BEGIN_WHILE_{local_counter}:')
-    }
-    comparison_while
-    {if 1:
+        global while_counter, stack_while
+        stack_while.append(while_counter)
         while_counter += 1
+        print(f'BEGIN_WHILE_{stack_while[-1]}:')
+    }
+    cmp = comparison
+    {if 1:
+        emit($cmp.type + ' END_WHILE_' + str(stack_while[-1]), -2)
     }
     COLON INDENT ( statement )+ DEDENT
     {if 1:
-        emit('goto BEGIN_WHILE_' + str(local_counter), 0)
-        print(f'END_WHILE_{local_counter}:')
-    }
-    ;
-
-comparison_while: expression op = ( LT | LE | EQ | NE | GT | GE ) expression
-    {if 1:
-        if $op.type == JacParser.EQ:
-            emit('if_icmpne END_WHILE_' + str(while_counter), -2)
-        elif $op.type == JacParser.NE:
-            emit('if_icmpeq END_WHILE_' + str(while_counter), -2)
-        elif $op.type == JacParser.GT:
-            emit('if_icmple END_WHILE_' + str(while_counter), -2)
-        elif $op.type == JacParser.GE:
-            emit('if_icmplt END_WHILE_' + str(while_counter), -2)
-        elif $op.type == JacParser.LT:
-            emit('if_icmpge END_WHILE_' + str(while_counter), -2)
-        elif $op.type == JacParser.LE:
-            emit('if_icmpgt END_WHILE_' + str(while_counter), -2)
+        emit('goto BEGIN_WHILE_' + str(stack_while[-1]), 0)
+        print(f'END_WHILE_{stack_while[-1]}:')
+        stack_while.pop()
     }
     ;
 
 st_if:
-    IF comparison_if
+    IF cmp = comparison
     {if 1:
         global if_counter
+        emit($cmp.type + ' NOT_IF_' + str(if_counter), -2)
         local_counter = if_counter
         if_counter += 1
     }
@@ -211,20 +200,34 @@ st_if:
     }
     ;
 
-comparison_if: expression op = ( LT | LE | EQ | NE | GT | GE ) expression
+comparison returns [type]: expression op = ( LT | LE | EQ | NE | GT | GE ) expression
     {if 1:
-        if $op.type == JacParser.EQ:
-            emit('if_icmpne NOT_IF_' + str(if_counter), -2)
-        elif $op.type == JacParser.NE:
-            emit('if_icmpeq NOT_IF_' + str(if_counter), -2)
-        elif $op.type == JacParser.GT:
-            emit('if_icmple NOT_IF_' + str(if_counter), -2)
-        elif $op.type == JacParser.GE:
-            emit('if_icmplt NOT_IF_' + str(if_counter), -2)
-        elif $op.type == JacParser.LT:
-            emit('if_icmpge NOT_IF_' + str(if_counter), -2)
-        elif $op.type == JacParser.LE:
-            emit('if_icmpgt NOT_IF_' + str(if_counter), -2)
+        if $op.type == JacParser.EQ: $type = 'if_icmpne'
+        elif $op.type == JacParser.NE: $type = 'if_icmpeq'
+        elif $op.type == JacParser.GT: $type = 'if_icmple'
+        elif $op.type == JacParser.GE: $type = 'if_icmplt'
+        elif $op.type == JacParser.LT: $type = 'if_icmpge'
+        elif $op.type == JacParser.LE: $type = 'if_icmpgt'
+    }
+    ;
+
+st_break: BREAK
+    {if 1:
+        global stack_while
+        if len(stack_while) > 0:
+            emit('goto END_WHILE_' + str(stack_while[-1]), -2)
+        else:
+            sys.stderr.write('error: cannot use break outside a loop')
+    }
+    ;
+
+st_continue: CONTINUE
+    {if 1:
+        global stack_while
+        if len(stack_while) > 0:
+            emit('goto BEGIN_WHILE_' + str(stack_while[-1]), 0)
+        else:
+            sys.stderr.write('error: cannot use continue outside a loop')
     }
     ;
 
