@@ -7,6 +7,7 @@ grammar Jac;
 import sys
 
 symbol_table = []
+types_table  = []
 symbols_used = []
 
 stack_cur      = 0
@@ -60,6 +61,7 @@ INDENT  : 'indent'  ;
 DEDENT  : 'dedent'  ;
 BREAK   : 'break'   ; 
 CONTINUE: 'continue'; 
+READSTR : 'readstr' ;
 
 PLUS  : '+' ;
 MINUS : '-' ;
@@ -67,8 +69,6 @@ TIMES : '*' ;
 OVER  : '/' ;
 REM   : '%' ;
 
-OP_CUR: '{' ;
-CL_CUR: '}' ;
 OP_PAR: '(' ;
 CL_PAR: ')' ;
 ATTRIB: '=' ;
@@ -85,6 +85,7 @@ GE    : '>=';
 NAME  : 'a'..'z'+ ;
 
 NUMBER: '0'..'9'+ ;
+STRING: '"' ~('"')* '"' ;
 
 COMMENT: '#' ~('\n')* -> skip ;
 NL     : ('\r'? '\n' ' '*) ;
@@ -136,15 +137,20 @@ st_print:
     {if 1:
         emit('getstatic java/lang/System/out Ljava/io/PrintStream;', +1)
     }
-    expression 
+    e1 = expression 
     {if 1:
-        emit('invokevirtual java/io/PrintStream/print(I)V\n', -2)
+        if $e1.type == 'i':
+            emit('invokevirtual java/io/PrintStream/print(I)V\n', -2)
+        elif $e1.type == 's':
+            emit('invokevirtual java/io/PrintStream/print(Ljava/lang/String;)V\n', -2)
+        else:
+            sys.stderr.write('VOCE NAO FAZ MEU TIPO\n')
     }
     ( COMMA
     {if 1:
         emit('getstatic java/lang/System/out Ljava/io/PrintStream;', +1)
     }
-    expression
+    e2 = expression
     {if 1:
         emit('invokevirtual java/io/PrintStream/print(I)V\n', -2)
     }
@@ -157,12 +163,16 @@ st_print:
     ;
 
 st_attrib: 
-    NAME ATTRIB expression
+    NAME ATTRIB e = expression
     {if 1:
         if $NAME.text not in symbol_table:
             symbol_table.append($NAME.text)
-
-        emit('istore '+str(symbol_table.index($NAME.text)),-1)
+            types_table.append($e.type)
+        address = symbol_table.index($NAME.text)
+        if $e.type == 'i':
+            emit('istore '+str(symbol_table.index($NAME.text)),-1)
+        else:
+            emit('astore '+str(symbol_table.index($NAME.text)),-1)
     }
     ;
 
@@ -231,8 +241,8 @@ st_continue: CONTINUE
     }
     ;
 
-expression:
-    term ( op = (PLUS | MINUS) term
+expression returns [type]:
+    t1 = term ( op = ( PLUS | MINUS ) t2 = term
     {if 1:
         if $op.type == JacParser.PLUS:
             emit('iadd', -1)
@@ -240,9 +250,12 @@ expression:
             emit('isub', -1)
     }
     )*
+    {if 1:
+        $type = $t1.type
+    }
     ;
 
-term: factor ( op = (TIMES | OVER | REM ) factor
+term returns [type]: f1 = factor ( op = ( TIMES | OVER | REM ) f2 = factor
     {if 1:
         if $op.type == JacParser.TIMES:
             emit('imul', -1)
@@ -252,26 +265,50 @@ term: factor ( op = (TIMES | OVER | REM ) factor
             emit('irem', -1)
     }
     )*
+    {if 1:
+        $type = $f1.type
+    }
     ;
 
-factor: NUMBER
+factor returns [type]: NUMBER
     {if 1:
-        #print('    ldc ' + $NUMBER.text)
         emit('ldc ' + $NUMBER.text, +1)
+        $type = 'i'
     }
-    | OP_PAR expression CL_PAR
+    | STRING
+    {if 1:
+        emit('ldc ' + $STRING.text, +1)
+        $type = 's'
+    }
+    | OP_PAR e = expression CL_PAR
+    {if 1:
+        $type = $e.type
+    }
     | NAME
     {if 1:
         if $NAME.text not in symbol_table:
             sys.stderr.write('error: ' + $NAME.text + ' is not declared in line '+ str($NAME.line))
             sys.exit(1)
+        elif $NAME.text not in symbols_used:
+            symbols_used.append($NAME.text)
+
+        address = symbol_table.index($NAME.text)
+        if types_table[address] == 'i':
+            emit('iload ' + str(address), +1)
+            $type = 'i'
         else:
-            if $NAME.text not in symbol_table:
-                symbols_used.append($NAME.text)
-            emit('iload ' + str(symbol_table.index($NAME.text)), +1)
+            emit('aload ' + str(address), +1)
+            $type = 's'
     }
     | READINT OP_PAR CL_PAR
     {if 1:
         emit('invokestatic Runtime/readInt()I', +1)
+        $type = 'i'
+    }
+    |READSTR OP_PAR CL_PAR
+    {if 1:
+        emit('invokestatic Runtime/readString()Ljava/lang/String;', +1)
+        $type = 's'
+
     }
     ;
