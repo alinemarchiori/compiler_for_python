@@ -13,6 +13,7 @@ symbols_used = []
 stack_cur      = 0
 stack_max      = 0
 stack_while    = []
+has_error      = 0
 
 if_counter = 0
 while_counter = 0
@@ -105,6 +106,9 @@ program:
         print('.end method\n')
     }
     main
+    {if 1:
+        sys.exit(has_error)
+    }
     ;
 
 main:
@@ -169,10 +173,20 @@ st_attrib:
             symbol_table.append($NAME.text)
             types_table.append($e.type)
         address = symbol_table.index($NAME.text)
-        if $e.type == 'i':
-            emit('istore '+str(symbol_table.index($NAME.text)),-1)
+        if $e.type == types_table[address]:
+            if $e.type == 'i':
+                emit('istore '+str(symbol_table.index($NAME.text)),-1)
+            else:
+                emit('astore '+str(symbol_table.index($NAME.text)),-1)
         else:
-            emit('astore '+str(symbol_table.index($NAME.text)),-1)
+            text = ""
+            if types_table[address] == 'i':
+                text += " is integer\n"
+            else:
+                text += " is string\n"
+            sys.stderr.write('error: ' + symbol_table[address] + text)
+            global has_error
+            has_error = 1
     }
     ;
 
@@ -210,7 +224,7 @@ st_if:
     }
     ;
 
-comparison returns [type]: expression op = ( LT | LE | EQ | NE | GT | GE ) expression
+comparison returns [type]: e1 = expression op = ( LT | LE | EQ | NE | GT | GE ) e2 = expression
     {if 1:
         if $op.type == JacParser.EQ: $type = 'if_icmpne'
         elif $op.type == JacParser.NE: $type = 'if_icmpeq'
@@ -218,6 +232,12 @@ comparison returns [type]: expression op = ( LT | LE | EQ | NE | GT | GE ) expre
         elif $op.type == JacParser.GE: $type = 'if_icmplt'
         elif $op.type == JacParser.LT: $type = 'if_icmpge'
         elif $op.type == JacParser.LE: $type = 'if_icmpgt'
+    }
+    {if 1:
+        if $e1.type != $e2.type:
+            sys.stderr.write('error: ' + $e1.text + ' ' + $e2.text + ' diferent types\n')
+            global has_error
+            has_error = 1
     }
     ;
 
@@ -241,13 +261,17 @@ st_continue: CONTINUE
     }
     ;
 
-expression returns [type]:
-    t1 = term ( op = ( PLUS | MINUS ) t2 = term
+expression returns [type]: t1 = term ( op = ( PLUS | MINUS ) t2 = term
     {if 1:
-        if $op.type == JacParser.PLUS:
-            emit('iadd', -1)
+        if str($t1.type) == str($t2.type) and str($t1.type) != 's':
+            if $op.type == JacParser.PLUS:
+                emit('iadd', -1)
+            else:
+                emit('isub', -1)
         else:
-            emit('isub', -1)
+            sys.stderr.write('error: ' + $t1.text + ' ' + $t2.text + ' diferent types\n')
+            global has_error
+            has_error = 1
     }
     )*
     {if 1:
@@ -257,12 +281,17 @@ expression returns [type]:
 
 term returns [type]: f1 = factor ( op = ( TIMES | OVER | REM ) f2 = factor
     {if 1:
-        if $op.type == JacParser.TIMES:
-            emit('imul', -1)
-        elif $op.type == JacParser.OVER:
-            emit('idiv', -1)
+        if str($f1.type) == str($f2.type) and str($f1.type) != 's':
+            if $op.type == JacParser.TIMES:
+                emit('imul', -1)
+            elif $op.type == JacParser.OVER:
+                emit('idiv', -1)
+            else:
+                emit('irem', -1)
         else:
-            emit('irem', -1)
+            sys.stderr.write('error: ' + $f1.text + ' ' + $f2.text + ' diferent types\n')
+            global has_error
+            has_error = 1
     }
     )*
     {if 1:
@@ -309,6 +338,5 @@ factor returns [type]: NUMBER
     {if 1:
         emit('invokestatic Runtime/readString()Ljava/lang/String;', +1)
         $type = 's'
-
     }
     ;
