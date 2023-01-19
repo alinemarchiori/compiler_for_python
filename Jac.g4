@@ -63,6 +63,7 @@ DEDENT  : 'dedent'  ;
 BREAK   : 'break'   ; 
 CONTINUE: 'continue'; 
 READSTR : 'readstr' ;
+DEF     : 'def'     ;
 
 PLUS  : '+' ;
 MINUS : '-' ;
@@ -105,7 +106,7 @@ program:
         print('    return')
         print('.end method\n')
     }
-    main
+    (function)* main
     {if 1:
         sys.exit(has_error)
     }
@@ -127,13 +128,47 @@ main:
         print('    return')
         if len(symbol_table) > 0:
             print('.limit locals ' + str(len(symbol_table)))
-        print('.limit stack ' + str(stack_max))
+        if stack_max > 0:
+            print('.limit stack ' + str(stack_max))
         print('.end method')
         print('\n; symbol_table:', symbol_table)
     }
     ;
 
-statement: NL | st_print | st_attrib | st_if | st_while | st_break | st_continue
+function: DEF NAME OP_PAR CL_PAR 
+    {if 1:
+        global stack_max
+        print(f'.method public static {$NAME.text}()V\n')
+    }
+
+    COLON INDENT ( statement )* DEDENT
+
+    {if 1:
+        not_used = [elemento for elemento in symbol_table if elemento not in symbols_used]
+        if len(not_used) > 0:  
+            sys.stderr.write('warning: ' + not_used[0] + ' is defined but never used')
+    }
+
+    {if 1:
+        print('    return')
+        if len(symbol_table) > 0:
+            print('.limit locals ' + str(len(symbol_table)))
+        print('.limit stack ' + str(stack_max))
+        print('.end method')
+        print('\n; symbol_table:', symbol_table)
+
+    }
+    
+    {if 1:
+        symbol_table.clear()
+        symbols_used.clear()
+        types_table.clear()
+        stack_max = 0
+    }
+    ;
+
+
+statement: NL | st_print | st_attrib | st_if | st_while | st_break | st_continue | st_call
     ;
 
 st_print:
@@ -148,7 +183,7 @@ st_print:
         elif $e1.type == 's':
             emit('invokevirtual java/io/PrintStream/print(Ljava/lang/String;)V\n', -2)
         else:
-            sys.stderr.write('VOCE NAO FAZ MEU TIPO\n')
+            sys.stderr.write('tipo invalido\n')
     }
     ( COMMA
     {if 1:
@@ -261,6 +296,12 @@ st_continue: CONTINUE
     }
     ;
 
+st_call: NAME OP_PAR CL_PAR
+    {if 1:
+        print(f'invokestatic Test/{$NAME.text}()V')
+    }
+    ;
+
 expression returns [type]: t1 = term ( op = ( PLUS | MINUS ) t2 = term
     {if 1:
         if str($t1.type) == str($t2.type) and str($t1.type) != 's':
@@ -334,7 +375,7 @@ factor returns [type]: NUMBER
         emit('invokestatic Runtime/readInt()I', +1)
         $type = 'i'
     }
-    |READSTR OP_PAR CL_PAR
+    | READSTR OP_PAR CL_PAR
     {if 1:
         emit('invokestatic Runtime/readString()Ljava/lang/String;', +1)
         $type = 's'
