@@ -14,6 +14,7 @@ stack_cur      = 0
 stack_max      = 0
 stack_while    = []
 has_error      = 0
+quantidade_parameters = 0
 
 if_counter = 0
 while_counter = 0
@@ -135,10 +136,10 @@ main:
     }
     ;
 
-function: DEF NAME OP_PAR CL_PAR 
+function: DEF NAME OP_PAR ( parameters ) CL_PAR 
     {if 1:
-        global stack_max
-        print(f'.method public static {$NAME.text}()V\n')
+        global stack_max, quantidade_parameters
+        print(f'.method public static {$NAME.text}({"I"*len(symbol_table)})V\n')
     }
 
     COLON INDENT ( statement )* DEDENT
@@ -156,7 +157,6 @@ function: DEF NAME OP_PAR CL_PAR
         print('.limit stack ' + str(stack_max))
         print('.end method')
         print('\n; symbol_table:', symbol_table)
-
     }
     
     {if 1:
@@ -167,6 +167,25 @@ function: DEF NAME OP_PAR CL_PAR
     }
     ;
 
+
+parameters: ( NAME 
+    
+    {if 1:
+        symbol_table.append($NAME.text)
+        types_table.append('i')
+        symbols_used.append($NAME.text)
+    }
+
+    ( COMMA NAME 
+    
+    {if 1:
+        symbol_table.append($NAME.text)
+        types_table.append('i')
+        symbols_used.append($NAME.text)
+    }
+
+    )* )?
+    ;
 
 statement: NL | st_print | st_attrib | st_if | st_while | st_break | st_continue | st_call
     ;
@@ -191,7 +210,12 @@ st_print:
     }
     e2 = expression
     {if 1:
-        emit('invokevirtual java/io/PrintStream/print(I)V\n', -2)
+        if $e2.type == 'i':
+            emit('invokevirtual java/io/PrintStream/print(I)V\n', -2)
+        elif $e2.type == 's':
+            emit('invokevirtual java/io/PrintStream/print(Ljava/lang/String;)V\n', -2)
+        else:
+            sys.stderr.write('tipo invalido\n')
     }
     )*
     ?CL_PAR
@@ -296,10 +320,28 @@ st_continue: CONTINUE
     }
     ;
 
-st_call: NAME OP_PAR CL_PAR
+st_call: NAME OP_PAR ( arguments ) CL_PAR
+
     {if 1:
-        print(f'invokestatic Test/{$NAME.text}()V')
+        global quantidade_parameters
+        emit(f'invokestatic Test/{$NAME.text}({"I"*quantidade_parameters})V', -quantidade_parameters)
+        quantidade_parameters = 0
     }
+    ;
+
+arguments: (expression 
+    {if 1:
+        global quantidade_parameters
+        quantidade_parameters += 1
+    }
+
+    (COMMA expression
+    
+    {if 1:
+        quantidade_parameters += 1
+    }
+
+    )*)?
     ;
 
 expression returns [type]: t1 = term ( op = ( PLUS | MINUS ) t2 = term
