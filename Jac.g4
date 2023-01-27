@@ -14,6 +14,7 @@ stack_cur      = 0
 stack_max      = 0
 stack_while    = []
 has_error      = 0
+flagInt        = False
 quantidade_parameters = 0
 
 if_counter = 0
@@ -65,6 +66,8 @@ BREAK   : 'break'   ;
 CONTINUE: 'continue'; 
 READSTR : 'readstr' ;
 DEF     : 'def'     ;
+INT     : 'int'     ;
+RETURN  : 'return'  ;
 
 PLUS  : '+' ;
 MINUS : '-' ;
@@ -137,12 +140,21 @@ main:
     ;
 
 function: DEF NAME OP_PAR ( parameters ) CL_PAR 
+    
+    COLON ( INT 
     {if 1:
-        global stack_max, quantidade_parameters
-        print(f'.method public static {$NAME.text}({"I"*len(symbol_table)})V\n')
-    }
+        global flagInt, stack_max, quantidade_parameters
+        flagInt = True
+    })? 
 
-    COLON INDENT ( statement )* DEDENT
+    {if 1:
+        if flagInt:
+            print(f'.method public static {$NAME.text}({"I"*len(symbol_table)})I\n')
+            flagInt = False
+        else:
+            print(f'.method public static {$NAME.text}({"I"*len(symbol_table)})V\n')
+    }
+    INDENT ( statement )* DEDENT
 
     {if 1:
         not_used = [elemento for elemento in symbol_table if elemento not in symbols_used]
@@ -187,7 +199,7 @@ parameters: ( NAME
     )* )?
     ;
 
-statement: NL | st_print | st_attrib | st_if | st_while | st_break | st_continue | st_call
+statement: NL | st_print | st_attrib | st_if | st_while | st_break | st_continue | st_call | st_return
     ;
 
 st_print:
@@ -344,6 +356,12 @@ arguments: (expression
     )*)?
     ;
 
+st_return: RETURN expression
+    {if 1:
+        emit('ireturn', -1)
+    }
+    ;
+
 expression returns [type]: t1 = term ( op = ( PLUS | MINUS ) t2 = term
     {if 1:
         if str($t1.type) == str($t2.type) and str($t1.type) != 's':
@@ -384,6 +402,7 @@ term returns [type]: f1 = factor ( op = ( TIMES | OVER | REM ) f2 = factor
 
 factor returns [type]: NUMBER
     {if 1:
+        global quantidade_parameters
         emit('ldc ' + $NUMBER.text, +1)
         $type = 'i'
     }
@@ -396,6 +415,12 @@ factor returns [type]: NUMBER
     {if 1:
         $type = $e.type
     }
+    | NAME OP_PAR ( arguments
+    {if 1:
+        emit(f'invokestatic Test/{$NAME.text}({"I"*quantidade_parameters})I', -quantidade_parameters+1)
+        quantidade_parameters = 0
+        $type = 'i'
+    }) CL_PAR
     | NAME
     {if 1:
         if $NAME.text not in symbol_table:
