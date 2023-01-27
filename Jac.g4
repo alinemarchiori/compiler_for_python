@@ -9,15 +9,15 @@ import sys
 symbol_table = []
 types_table  = []
 symbols_used = []
+stack_while    = []
 list_functions = []
+list_quantidade_parametros = []
 
 stack_cur      = 0
 stack_max      = 0
-stack_while    = []
 has_error      = 0
 flagInt        = False
-quantidade_parameters = 0
-
+quantidade_argumentos = 0
 if_counter = 0
 while_counter = 0
 
@@ -143,7 +143,7 @@ main:
 function: DEF NAME 
 
     {if 1:
-        global list_functions, flagInt, stack_max, quantidade_parameters
+        global list_functions, flagInt, stack_max, quantidade_argumentos
         print(f'\n; {list_functions}, {$NAME.text}', list_functions)
         if $NAME.text in list_functions:
             sys.stderr.write(f'error: function {$NAME.text} is already declared \n')
@@ -166,6 +166,8 @@ function: DEF NAME
             flagInt = False
         else:
             print(f'.method public static {$NAME.text}({"I"*len(symbol_table)})V\n')
+
+        list_quantidade_parametros.append(len(symbol_table))
     }
     INDENT ( statement )* DEDENT
 
@@ -250,8 +252,7 @@ st_print:
     }
     ;
 
-st_attrib: 
-    NAME ATTRIB e = expression
+st_attrib: NAME ATTRIB e = expression
     {if 1:
         if $NAME.text not in symbol_table:
             symbol_table.append($NAME.text)
@@ -354,27 +355,39 @@ st_call: NAME
             has_error = 1
     }
     
-     OP_PAR ( arguments ) CL_PAR
+    OP_PAR ( arguments ) CL_PAR
 
     {if 1:
-        global quantidade_parameters
-        emit(f'invokestatic Test/{$NAME.text}({"I"*quantidade_parameters})V', -quantidade_parameters)
-        quantidade_parameters = 0
+        global quantidade_argumentos
+        if quantidade_argumentos == list_quantidade_parametros[list_functions.index($NAME.text)]:
+            emit(f'invokestatic Test/{$NAME.text}({"I"*quantidade_argumentos})V', -quantidade_argumentos)
+            quantidade_argumentos = 0
+        else:
+            sys.stderr.write(f'error: wrong number of arguments \n')
+            quantidade_argumentos = 0
+            has_error = 1
     }
     ;
 
-arguments: (expression 
+arguments: (e = expression 
     {if 1:
-        global quantidade_parameters
-        quantidade_parameters += 1
+        global quantidade_argumentos, has_error
+        quantidade_argumentos += 1
     }
-
-    (COMMA expression
-    
     {if 1:
-        quantidade_parameters += 1
+        if $e.type == 's':
+            sys.stderr.write('error: all arguments must be integer\n')
+            has_error = 1
     }
-
+    (COMMA e1 = expression
+    {if 1:
+        quantidade_argumentos += 1
+    }
+    {if 1:
+        if $e1.type == 's':
+            sys.stderr.write('error: all arguments must be integer\n')
+            has_error = 1
+    }
     )*)?
     ;
 
@@ -424,7 +437,7 @@ term returns [type]: f1 = factor ( op = ( TIMES | OVER | REM ) f2 = factor
 
 factor returns [type]: NUMBER
     {if 1:
-        global quantidade_parameters
+        global quantidade_argumentos
         emit('ldc ' + $NUMBER.text, +1)
         $type = 'i'
     }
@@ -439,8 +452,8 @@ factor returns [type]: NUMBER
     }
     | NAME OP_PAR ( arguments
     {if 1:
-        emit(f'invokestatic Test/{$NAME.text}({"I"*quantidade_parameters})I', -quantidade_parameters+1)
-        quantidade_parameters = 0
+        emit(f'invokestatic Test/{$NAME.text}({"I"*quantidade_argumentos})I', -quantidade_argumentos+1)
+        quantidade_argumentos = 0
         $type = 'i'
     }) CL_PAR
     | NAME
