@@ -139,7 +139,6 @@ main:
         if stack_max > 0:
             print('.limit stack ' + str(stack_max))
         print('.end method')
-        print('\n; symbol_table:', symbol_table)
     }
     ;
 
@@ -147,7 +146,6 @@ function: DEF NAME
 
     {if 1:
         global list_functions, flagInt, stack_max, quantidade_argumentos, types_functions, name_function, return_used
-        print(f'\n; {list_functions}, {$NAME.text}', list_functions)
         if $NAME.text in list_functions:
             sys.stderr.write(f'error: function {$NAME.text} is already declared \n')
             global has_error
