@@ -11,6 +11,7 @@ types_table  = []
 symbols_used = []
 stack_while    = []
 list_functions = []
+types_functions = []
 list_quantidade_parametros = []
 
 stack_cur      = 0
@@ -20,6 +21,8 @@ flagInt        = False
 quantidade_argumentos = 0
 if_counter = 0
 while_counter = 0
+name_function = ""
+return_used = False
 
 def emit(bytecode, delta):
     global stack_cur,stack_max
@@ -143,7 +146,7 @@ main:
 function: DEF NAME 
 
     {if 1:
-        global list_functions, flagInt, stack_max, quantidade_argumentos
+        global list_functions, flagInt, stack_max, quantidade_argumentos, types_functions, name_function, return_used
         print(f'\n; {list_functions}, {$NAME.text}', list_functions)
         if $NAME.text in list_functions:
             sys.stderr.write(f'error: function {$NAME.text} is already declared \n')
@@ -163,10 +166,13 @@ function: DEF NAME
     {if 1:
         if flagInt:
             print(f'.method public static {$NAME.text}({"I"*len(symbol_table)})I\n')
+            types_functions.append("I")
             flagInt = False
         else:
             print(f'.method public static {$NAME.text}({"I"*len(symbol_table)})V\n')
+            types_functions.append("V")
 
+        name_function = $NAME.text
         list_quantidade_parametros.append(len(symbol_table))
     }
     INDENT ( statement )* DEDENT
@@ -183,10 +189,13 @@ function: DEF NAME
             print('.limit locals ' + str(len(symbol_table)))
         print('.limit stack ' + str(stack_max))
         print('.end method')
-        print('\n; symbol_table:', symbol_table)
     }
     
     {if 1:
+        if not return_used and types_functions[list_functions.index(name_function)] == "I":
+            sys.stderr.write('error: missing return statement in returning function \n')
+            has_error = 1
+        return_used = False
         symbol_table.clear()
         symbols_used.clear()
         types_table.clear()
@@ -196,29 +205,24 @@ function: DEF NAME
 
 
 parameters: ( NAME 
-    
     {if 1:
         symbol_table.append($NAME.text)
         types_table.append('i')
         symbols_used.append($NAME.text)
     }
-
     ( COMMA NAME 
-    
     {if 1:
         symbol_table.append($NAME.text)
         types_table.append('i')
         symbols_used.append($NAME.text)
     }
-
     )* )?
     ;
 
 statement: NL | st_print | st_attrib | st_if | st_while | st_break | st_continue | st_call | st_return
     ;
 
-st_print:
-    PRINT OP_PAR
+st_print: PRINT OP_PAR
     {if 1:
         emit('getstatic java/lang/System/out Ljava/io/PrintStream;', +1)
     }
@@ -229,7 +233,7 @@ st_print:
         elif $e1.type == 's':
             emit('invokevirtual java/io/PrintStream/print(Ljava/lang/String;)V\n', -2)
         else:
-            sys.stderr.write('tipo invalido\n')
+            sys.stderr.write('error: cannot mix types\n')
     }
     ( COMMA
     {if 1:
@@ -242,7 +246,7 @@ st_print:
         elif $e2.type == 's':
             emit('invokevirtual java/io/PrintStream/print(Ljava/lang/String;)V\n', -2)
         else:
-            sys.stderr.write('tipo invalido\n')
+            sys.stderr.write('error: cannot mix types\n')
     }
     )*
     ?CL_PAR
@@ -268,15 +272,14 @@ st_attrib: NAME ATTRIB e = expression
             if types_table[address] == 'i':
                 text += " is integer\n"
             else:
-                text += " is string\n"
+                text += " cannot receive an integer expression\n"
             sys.stderr.write('error: ' + symbol_table[address] + text)
             global has_error
             has_error = 1
     }
     ;
 
-st_while:
-    WHILE 
+st_while: WHILE 
     {if 1:
         global while_counter, stack_while
         stack_while.append(while_counter)
@@ -295,8 +298,7 @@ st_while:
     }
     ;
 
-st_if:
-    IF cmp = comparison
+st_if: IF cmp = comparison
     {if 1:
         global if_counter
         emit($cmp.type + ' NOT_IF_' + str(if_counter), -2)
@@ -346,17 +348,14 @@ st_continue: CONTINUE
     }
     ;
 
-st_call: NAME
-
+st_call: NAME {if 1: name_function = $NAME.text}
     {if 1:
         if $NAME.text not in list_functions:
             sys.stderr.write(f'error: function {$NAME.text} is not declared \n')
             global has_error
             has_error = 1
     }
-    
     OP_PAR ( arguments ) CL_PAR
-
     {if 1:
         global quantidade_argumentos
         if quantidade_argumentos == list_quantidade_parametros[list_functions.index($NAME.text)]:
@@ -391,9 +390,21 @@ arguments: (e = expression
     )*)?
     ;
 
-st_return: RETURN expression
+st_return: RETURN 
     {if 1:
-        emit('ireturn', -1)
+        global has_error, types_functions, name_function, return_used
+        if types_functions[list_functions.index(name_function)] != "I":
+            sys.stderr.write('error: a void function does not return a value \n')
+            has_error = 1
+    } 
+    e = expression
+    {if 1:
+        if $e.type != 'i':
+            sys.stderr.write('error: return value must be of integer type\n')
+            has_error = 1
+        else:
+            emit('ireturn', -1)
+        return_used = True
     }
     ;
 
@@ -437,7 +448,7 @@ term returns [type]: f1 = factor ( op = ( TIMES | OVER | REM ) f2 = factor
 
 factor returns [type]: NUMBER
     {if 1:
-        global quantidade_argumentos
+        global quantidade_argumentos, name_function
         emit('ldc ' + $NUMBER.text, +1)
         $type = 'i'
     }
@@ -450,7 +461,7 @@ factor returns [type]: NUMBER
     {if 1:
         $type = $e.type
     }
-    | NAME OP_PAR ( arguments
+    | NAME {if 1: name_function = $NAME.text} OP_PAR ( arguments
     {if 1:
         emit(f'invokestatic Test/{$NAME.text}({"I"*quantidade_argumentos})I', -quantidade_argumentos+1)
         quantidade_argumentos = 0
