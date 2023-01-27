@@ -9,6 +9,7 @@ import sys
 symbol_table = []
 types_table  = []
 symbols_used = []
+list_functions = []
 
 stack_cur      = 0
 stack_max      = 0
@@ -125,7 +126,7 @@ main:
     {if 1:
         not_used = [elemento for elemento in symbol_table if elemento not in symbols_used]
         if len(not_used) > 0:  
-            sys.stderr.write('warning: ' + not_used[0] + ' is defined but never used')
+            sys.stderr.write('warning: ' + not_used[0] + ' is defined but never used \n')
     }
 
     {if 1:
@@ -139,11 +140,23 @@ main:
     }
     ;
 
-function: DEF NAME OP_PAR ( parameters ) CL_PAR 
+function: DEF NAME 
+
+    {if 1:
+        global list_functions, flagInt, stack_max, quantidade_parameters
+        print(f'\n; {list_functions}, {$NAME.text}', list_functions)
+        if $NAME.text in list_functions:
+            sys.stderr.write(f'error: function {$NAME.text} is already declared \n')
+            global has_error
+            has_error = 1
+        else:
+            list_functions.append($NAME.text)
+    }
+    
+    OP_PAR ( parameters ) CL_PAR 
     
     COLON ( INT 
     {if 1:
-        global flagInt, stack_max, quantidade_parameters
         flagInt = True
     })? 
 
@@ -159,7 +172,7 @@ function: DEF NAME OP_PAR ( parameters ) CL_PAR
     {if 1:
         not_used = [elemento for elemento in symbol_table if elemento not in symbols_used]
         if len(not_used) > 0:  
-            sys.stderr.write('warning: ' + not_used[0] + ' is defined but never used')
+            sys.stderr.write('warning: ' + not_used[0] + ' is defined but never used \n')
     }
 
     {if 1:
@@ -332,7 +345,16 @@ st_continue: CONTINUE
     }
     ;
 
-st_call: NAME OP_PAR ( arguments ) CL_PAR
+st_call: NAME
+
+    {if 1:
+        if $NAME.text not in list_functions:
+            sys.stderr.write(f'error: function {$NAME.text} is not declared \n')
+            global has_error
+            has_error = 1
+    }
+    
+     OP_PAR ( arguments ) CL_PAR
 
     {if 1:
         global quantidade_parameters
