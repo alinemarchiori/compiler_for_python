@@ -17,4 +17,3 @@ tokens = CommonTokenStream(lexer)
 parser = JacParser(tokens)
 
 parser.program()
-
